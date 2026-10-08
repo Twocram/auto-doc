@@ -229,5 +229,7 @@ function templateData(row) {
     executorMessenger: row["Мессенджер исполнителя"] ?? "",
     executorPhone: row["Телефон исполнителя"] ?? "",
     executorRequisites: requisites,
+    executorRole: isIp ? "Индивидуальный предприниматель" : "Самозанятый",
+    executorNameOnly: String(row["Исполнитель (полное название)"] ?? "").replace(/^Индивидуальный предприниматель\s+/i, "").replace(/^ИП\s+/i, "").trim(),
   };
 }

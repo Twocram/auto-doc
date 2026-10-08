@@ -163,6 +163,11 @@ export function templateData(row: ContractRow): Record<string, string> {
     row["Расчётный счёт"] ? `к/с ${row["Корр. счёт"]}` : "",
   ].filter(Boolean);
 
+  const executorNameOnly = (row["Исполнитель (полное название)"] ?? "")
+    .replace(/^Индивидуальный предприниматель\s+/i, "")
+    .replace(/^ИП\s+/i, "")
+    .trim();
+
   const contractNumber = `${compactDate(contractDate)}-${row["Номер"].trim()}`;
 
   return {
@@ -201,6 +206,8 @@ export function templateData(row: ContractRow): Record<string, string> {
     executorMessenger: row["Мессенджер исполнителя"] ?? "",
     executorRequisites: requisitesLines.join("\n"),
     executorPhone: row["Телефон исполнителя"] ?? "",
+    executorRole: isIp ? "Индивидуальный предприниматель" : "Самозанятый",
+    executorNameOnly,
   };
 }
 
