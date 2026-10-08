@@ -1,0 +1,21 @@
+{
+  "name": "auto-doc",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "auth": "bun run src/auth.ts",
+    "generate:test": "bun run src/generate.ts"
+  },
+  "dependencies": {
+    "docxtemplater": "^3.66.0",
+    "googleapis": "^144.0.0",
+    "grammy": "^1.38.0",
+    "pizzip": "^3.2.0"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.6.0"
+  }
+}
