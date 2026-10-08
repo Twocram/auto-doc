@@ -1,16 +1,18 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
+
 import { config } from "./config";
 import { requiredHeaders, type ContractRow } from "./contractData";
 import { parseContractMessage } from "./parseMessage";
 import { appendRow } from "./sheets";
 import { generateForRow } from "./pipeline";
-
+import { lookupParties, type PartyInfo } from "./companyLookup";
 type Session = {
   stage: "awaitMessage" | "collecting" | "review" | "editing";
   row: ContractRow;
   missing: string[];
   step: number;
   editField: string;
+  candidates: PartyInfo[];
 };
 
 const sessions = new Map<number, Session>();
@@ -144,6 +146,19 @@ export function createBot(): Bot {
     await ctx.editMessageText(`Текущее значение «${field}»:\n${session.row[field] ?? "—"}\n\nПришлите новое значение:`);
   });
 
+  bot.callbackQuery(/^pick:(\d+)$/, async (ctx) => {
+    const session = sessions.get(ctx.from.id);
+    if (!session) return ctx.answerCallbackQuery("Сессия истекла, начните заново: /new");
+    const party = session.candidates[Number(ctx.match[1])];
+    if (!party) return ctx.answerCallbackQuery("Вариант не найден");
+    session.row["ИНН клиента"] = party.inn;
+    session.row["ОГРН клиента"] = party.ogrn;
+    session.missing = session.missing.filter((h) => h !== "ИНН клиента" && h !== "ОГРН клиента");
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(`Выбрано: ${party.name}\nИНН ${party.inn}, ОГРН ${party.ogrn}`);
+    await askNext(ctx, session);
+  });
+
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from!.id;
     const text = ctx.message.text;
@@ -182,6 +197,26 @@ export function createBot(): Bot {
       session.missing = requiredHeaders(session.row).filter((h) => !session.row[h]?.trim());
       session.step = 0;
       session.stage = "collecting";
+
+      const needsClientLookup = session.missing.some((h) => h === "ИНН клиента" || h === "ОГРН клиента");
+      if (needsClientLookup && row["Клиент (краткое название)"]) {
+        await ctx.reply("Ищу ИНН/ОГРН клиента в ЕГРЮЛ…");
+        session.candidates = await lookupParties(row["Клиент (краткое название)"]);
+        if (session.candidates.length === 1) {
+          const found = session.candidates[0];
+          session.row["ИНН клиента"] = found.inn;
+          session.row["ОГРН клиента"] = found.ogrn;
+          session.missing = session.missing.filter((h) => h !== "ИНН клиента" && h !== "ОГРН клиента");
+          await ctx.reply(`Нашёл: ${found.name}\nИНН ${found.inn}, ОГРН ${found.ogrn} — проверьте в превью.`);
+        } else if (session.candidates.length > 1) {
+          const keyboard = session.candidates.reduce(
+            (kb, party, i) => kb.text(`${party.inn} — ${party.name.slice(0, 40)}`, `pick:${i}`).row(),
+            new InlineKeyboard(),
+          );
+          await ctx.reply("Нашлось несколько компаний — выберите нужную:", { reply_markup: keyboard });
+        }
+      }
+
       if (session.missing.length > 0) {
         await ctx.reply(`Распознано ${recognized} ключевых полей. Не хватает: ${session.missing.join(", ")}. Ответьте по одному сообщению на каждое.`);
       }
@@ -198,7 +233,7 @@ export function createBot(): Bot {
 }
 
 async function startIntake(ctx: Context): Promise<void> {
-  sessions.set(ctx.from!.id, { stage: "awaitMessage", row: {}, missing: [], step: 0, editField: "" });
+  sessions.set(ctx.from!.id, { stage: "awaitMessage", row: {}, missing: [], step: 0, editField: "", candidates: [] });
   await ctx.reply(
     "Пришлите данные договора одним сообщением в формате:\n\n" +
       "Формат - с маркировкой / без маркировки\n" +
