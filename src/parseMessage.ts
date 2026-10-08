@@ -127,12 +127,12 @@ export function parseContractMessage(text: string): ContractRow {
       ? "НДС не облагается (НПД)"
       : "НДС не облагается (УСН)";
   }
-  const today = new Date();
-  row["Дата договора"] = [
-    String(today.getDate()).padStart(2, "0"),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    today.getFullYear(),
-  ].join(".");
+  row["Дата договора"] = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date());
   row["Срок размещения (дней)"] = "30";
   row["Кто передаёт данные в ОРД"] = "Заказчик";
   row["Статус"] = "Черновик";

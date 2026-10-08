@@ -190,7 +190,7 @@ function templateData(row) {
     row["Расчётный счёт"]
       ? "Банковские реквизиты: р/с " + row["Расчётный счёт"] + " в банке " + row["Банк исполнителя"] + " БИК " + row["БИК"] + " к/с " + row["Корр. счёт"]
       : "",
-  ].filter(Boolean).join(". ") + ".";
+  ].filter(Boolean).join("\n");
 
   return {
     contractNumber: pad2(contractDate.getDate()) + pad2(contractDate.getMonth() + 1) + contractDate.getFullYear() + "-" + String(row["Номер"]).trim(),

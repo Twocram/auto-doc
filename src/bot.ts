@@ -50,7 +50,16 @@ async function askNext(ctx: Context, session: Session): Promise<void> {
     await showPreview(ctx, session);
     return;
   }
-  await ctx.reply(`${session.missing[session.step]}:`, { reply_markup: cancelKeyboard });
+  const field = session.missing[session.step];
+  if (field === "Дата договора") {
+    const keyboard = new InlineKeyboard()
+      .text(`Оставить ${session.row["Дата договора"]} (Мск)`, "datekeep")
+      .row()
+      .text("❌ Отмена", "flow:cancel");
+    await ctx.reply(`Дата договора: сейчас ${session.row["Дата договора"]}. Пришлите другую в формате ДД.ММ.ГГГГ или подтвердите:`, { reply_markup: keyboard });
+    return;
+  }
+  await ctx.reply(`${field}:`, { reply_markup: cancelKeyboard });
 }
 
 async function runGeneration(ctx: Context, row: ContractRow): Promise<void> {
@@ -159,6 +168,15 @@ export function createBot(): Bot {
     await askNext(ctx, session);
   });
 
+  bot.callbackQuery("datekeep", async (ctx) => {
+    const session = sessions.get(ctx.from.id);
+    if (!session) return ctx.answerCallbackQuery("Сессия истекла, начните заново: /new");
+    session.step++;
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(`Дата договора: ${session.row["Дата договора"]}`);
+    await askNext(ctx, session);
+  });
+
   bot.on("message:text", async (ctx) => {
     const userId = ctx.from!.id;
     const text = ctx.message.text;
@@ -175,6 +193,10 @@ export function createBot(): Bot {
 
     if (session.stage === "collecting" && session.step < session.missing.length) {
       const field = session.missing[session.step];
+      if (/^Дата/.test(field) && !/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(text.trim())) {
+        await ctx.reply("Некорректная дата. Формат: ДД.ММ.ГГГГ (например, 12.10.2026). Попробуйте ещё раз:", { reply_markup: cancelKeyboard });
+        return;
+      }
       session.row[field] = text.trim();
       session.step++;
       if (field === "Маркировка" || field === "Тип исполнителя") {
@@ -194,7 +216,7 @@ export function createBot(): Bot {
         return;
       }
       session.row = row;
-      session.missing = requiredHeaders(session.row).filter((h) => !session.row[h]?.trim());
+      session.missing = ["Дата договора", ...requiredHeaders(session.row).filter((h) => h !== "Дата договора" && !session.row[h]?.trim())];
       session.step = 0;
       session.stage = "collecting";
 

@@ -197,8 +197,8 @@ export function templateData(row: ContractRow): Record<string, string> {
     executorBik: row["БИК"] ?? "",
     executorEmail: row["E-mail исполнителя"] ?? "",
     executorMessenger: row["Мессенджер исполнителя"] ?? "",
+    executorRequisites: requisitesLines.join("\n"),
     executorPhone: row["Телефон исполнителя"] ?? "",
-    executorRequisites: requisitesLines.join(". ") + ".",
   };
 }
 
