@@ -36,27 +36,31 @@ export function parseContractMessage(text: string): ContractRow {
   const lines = normalized.split("\n").map((l) => l.trim().replace(/\s+/g, " "));
   const row: ContractRow = {};
 
-  // ищет строку-метку «label» или «label: значение»; значение — инлайн или следующая непустая строка
-  const valueFor = (label: string): string => {
-    const pattern = new RegExp(`^${escapeRegex(label.toLowerCase())}\\s*(?::|-|—|$)\\s*(.*)$`, "i");
-    const i = lines.findIndex((l) => pattern.test(l.toLowerCase()));
-    if (i === -1) return "";
-    const inline = lines[i].match(pattern)?.[1]?.trim() ?? "";
-    if (inline) return inline;
-    return lines.slice(i + 1).find((l) => l.length > 0) ?? "";
+  // ищет строку-метку; значение — инлайн (после : / - или просто числом через пробел) или следующая непустая строка
+  const valueFor = (...labels: string[]): string => {
+    for (const label of labels) {
+      const pattern = new RegExp(`^${escapeRegex(label.toLowerCase())}\\s*(?:(?::|-|—)\\s*|\\s+(?=[\\d+])|$)\\s*(.*)$`, "i");
+      const i = lines.findIndex((l) => pattern.test(l.toLowerCase()));
+      if (i === -1) continue;
+      const inline = lines[i].match(pattern)?.[1]?.trim() ?? "";
+      return inline || lines.slice(i + 1).find((l) => l.length > 0) || "";
+    }
+    return "";
   };
 
-  if (/формат\s*-\s*без маркировки/i.test(normalized)) row["Маркировка"] = "Нет";
-  else if (/формат\s*-\s*с маркировкой/i.test(normalized)) row["Маркировка"] = "Да";
+  const formatLine = lines.find((l) => /формат\s*-/i.test(l)) ?? "";
+  if (/без маркировки/i.test(formatLine)) row["Маркировка"] = "Нет";
+  else if (/с маркировкой/i.test(formatLine)) row["Маркировка"] = "Да";
 
   const executorIdx = lines.findIndex((l) => /исполнитель\s*[-:]/i.test(l));
   if (executorIdx !== -1) {
     const afterExecutor = lines.slice(executorIdx + 1).find((l) => l.length > 0) ?? "";
     const typeSource = `${lines[executorIdx]}\n${afterExecutor}`;
-    if (/самозанятый/i.test(typeSource)) row["Тип исполнителя"] = "Самозанятый";
+    if (/(?:^|\s)(СЗ|Самозанят\w*)(?:\s|$)/i.test(typeSource)) row["Тип исполнителя"] = "Самозанятый";
     else if (/(?:^|\s)ИП(?:\s|$)/i.test(typeSource)) row["Тип исполнителя"] = "ИП";
-    const inlineName = /(?:^|\s)(ИП|Самозанятый)(?:\s|$)/i.test(lines[executorIdx])
-      ? lines[executorIdx].replace(/.*(?:^|\s)(ИП|Самозанятый)(?:\s|$)/i, "").trim()
+    const hasTypeInline = /(?:^|\s)(ИП|СЗ|Самозанят\w*)(?:\s|$)/i.test(lines[executorIdx]);
+    const inlineName = hasTypeInline
+      ? lines[executorIdx].replace(/.*(?:^|\s)(ИП|СЗ|Самозанят\w*)\s+/i, "").trim()
       : "";
     const nameLine = inlineName || afterExecutor;
     if (nameLine) {
@@ -65,15 +69,21 @@ export function parseContractMessage(text: string): ContractRow {
     }
   }
 
-  row["Расчётный счёт"] = digits(valueFor("Расчётный счёт"));
-  row["Банк исполнителя"] = valueFor("Название банка").replace(/"([^"]*)"/, "«$1»");
+  row["Расчётный счёт"] = digits(valueFor("Расчётный счёт", "р/с"));
+  row["Банк исполнителя"] = valueFor("Название банка", "Банк").replace(/"([^"]*)"/, "«$1»");
   row["БИК"] = digits(valueFor("БИК"));
-  row["Корр. счёт"] = digits(valueFor("Корр. счёт")) || digits(valueFor("Корреспондентский счёт"));
+  row["Корр. счёт"] = digits(valueFor("Корр. счёт", "Корреспондентский счёт", "к/с"));
   row["ИНН исполнителя"] = digits(valueFor("ИНН"));
   row["ОГРНИП исполнителя"] = digits(valueFor("ОГРНИП"));
-  row["Адрес исполнителя"] = valueFor("Юридический адрес");
+  row["Адрес исполнителя"] = valueFor("Юридический адрес", "Данные исполнителя");
 
   const project = normalized.match(/Проект\s*[-:]\s*(.+)/i);
+
+  const ordLine = lines.find((l) => /обязанность.*ОРД/i.test(l));
+  if (ordLine) {
+    const ordValue = ordLine.replace(/.*ОРД\s*[-:]?\s*/i, "").trim();
+    row["Кто передаёт данные в ОРД"] = /мы|исполнитель/i.test(ordValue) ? "Исполнитель" : "Заказчик";
+  }
   if (project) row["Проект"] = project[1].trim();
 
   const client = normalized.match(/Данные клиента\s*[-:]\s*(.+)/i);
@@ -97,7 +107,8 @@ export function parseContractMessage(text: string): ContractRow {
       && !/\s-\s/.test(l);
     const sameLine = lines[channelUrlIdx]
       .replace(/(https?:\/\/t\.me\/\S+|t\.me\/\S+)/i, "")
-      .replace(/публикация в канале\s*[-:]?/i, "")
+      .replace(/публикация в канале/i, "")
+      .replace(/^[-–—:\s]+/, "")
       .trim();
     row["Канал"] =
       (isNameCandidate(sameLine) ? sameLine : "")
@@ -108,12 +119,16 @@ export function parseContractMessage(text: string): ContractRow {
 
   const placementDate = normalized.match(/Дата публикации\s*[-:]?\s*(?:до\s*)?(\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?)/i);
   if (placementDate) row["Дата публикации"] = parsePlacementDate(placementDate[1]);
-  const priceRaw = valueFor("Стоимость услуг");
+  const priceRaw = valueFor("Стоимость услуг", "Сумма");
   if (priceRaw) row["Стоимость"] = parsePrice(priceRaw);
 
+  const labeledEmail = valueFor("e-mail", "email", "Почта");
+  if (labeledEmail) row["E-mail исполнителя"] = labeledEmail;
   const emailLine = lines.find((l) => /^[\w.+-]+@[\w-]+\.[\w.]+$/.test(l));
   if (emailLine && !row["E-mail исполнителя"]) row["E-mail исполнителя"] = emailLine;
 
+  const labeledPhone = valueFor("Тел.", "Телефон");
+  if (labeledPhone) row["Телефон исполнителя"] = labeledPhone;
   const phoneLine = lines.find((l) => /^\+\d[\d\s()-]{9,}$/.test(l));
   if (phoneLine && !row["Телефон исполнителя"]) row["Телефон исполнителя"] = phoneLine;
 
@@ -122,7 +137,12 @@ export function parseContractMessage(text: string): ContractRow {
     if (addressLine) row["Адрес исполнителя"] = addressLine;
   }
 
-  if (/НДС не облагается/i.test(normalized) || (!row["НДС"] && row["Тип исполнителя"])) {
+  const vatPercentMatch = normalized.match(/облагается НДС[,\s]*(?:по ставке\s*)?(\d+)\s*%/i);
+  if (vatPercentMatch) {
+    row["НДС"] = `Включая НДС ${vatPercentMatch[1]}%`;
+  } else if (/облагается НДС/i.test(normalized)) {
+    row["НДС"] = "Включая НДС";
+  } else if (/НДС не облагается/i.test(normalized) || row["Тип исполнителя"]) {
     row["НДС"] = row["Тип исполнителя"] === "Самозанятый"
       ? "НДС не облагается (НПД)"
       : "НДС не облагается (УСН)";
@@ -134,7 +154,7 @@ export function parseContractMessage(text: string): ContractRow {
     year: "numeric",
   }).format(new Date());
   row["Срок размещения (дней)"] = "30";
-  row["Кто передаёт данные в ОРД"] = "Заказчик";
+  row["Кто передаёт данные в ОРД"] = row["Кто передаёт данные в ОРД"] || "Заказчик";
   row["Статус"] = "Черновик";
 
   return row;
