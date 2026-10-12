@@ -31,22 +31,33 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const KNOWN_LABEL = /^(формат|проект|данные|кто принимает|ндс|налогообложение|исполнитель|инн|огрнип|адрес|юридический адрес|расч[её]тный сч[её]т|номер сч[её]та|банк|бик|корр|контакты|тел|электронная почта|e-mail|email|публикация|дата|сумма|стоимость)/i;
+
 export function parseContractMessage(text: string): ContractRow {
-  const normalized = text.replace(/ /g, " ").replace(/–/g, "-");
+  const normalized = text.replace(/ /g, " ").replace(/–/g, "-");
   const lines = normalized.split("\n").map((l) => l.trim().replace(/\s+/g, " "));
   const row: ContractRow = {};
 
-  // ищет строку-метку; значение — инлайн (после : / - или просто числом через пробел) или следующая непустая строка
-  const valueFor = (...labels: string[]): string => {
-    for (const label of labels) {
-      const pattern = new RegExp(`^${escapeRegex(label.toLowerCase())}\\s*(?:(?::|-|—)\\s*|\\s+(?=[\\d+])|$)\\s*(.*)$`, "i");
-      const i = lines.findIndex((l) => pattern.test(l.toLowerCase()));
-      if (i === -1) continue;
-      const inline = lines[i].match(pattern)?.[1]?.trim() ?? "";
-      return inline || lines.slice(i + 1).find((l) => l.length > 0) || "";
-    }
-    return "";
+  // строгая метка: значение после : / - / $, либо через пробел если значение начинается с цифры или «+»
+  const valueStrict = (label: string): { value: string; lineIdx: number } => {
+    const pattern = new RegExp(`^${escapeRegex(label.toLowerCase())}\\s*(?:(?::|-|—)\\s*|\\s+(?=[\\d+])|$)\\s*(.*)$`, "i");
+    const i = lines.findIndex((l) => pattern.test(l.toLowerCase()));
+    if (i === -1) return { value: "", lineIdx: -1 };
+    const inline = lines[i].match(pattern)?.[1]?.trim() ?? "";
+    return { value: inline || lines.slice(i + 1).find((l) => l.length > 0) || "", lineIdx: i };
   };
+
+  // свободная метка: значение может идти через пробел с буквы (для меток, не конфликтующих с другими)
+  const valueLoose = (label: string): { value: string; lineIdx: number } => {
+    const pattern = new RegExp(`^${escapeRegex(label.toLowerCase())}\\s*(?:(?::|-|—)\\s*|\\s+|$)\\s*(.*)$`, "i");
+    const i = lines.findIndex((l) => pattern.test(l.toLowerCase()));
+    if (i === -1) return { value: "", lineIdx: -1 };
+    const inline = lines[i].match(pattern)?.[1]?.trim() ?? "";
+    return { value: inline || lines.slice(i + 1).find((l) => l.length > 0) || "", lineIdx: i };
+  };
+
+  const valueFor = (...labels: string[]): string =>
+    labels.map((l) => valueStrict(l).value).find((v) => v) ?? "";
 
   const formatLine = lines.find((l) => /формат\s*-/i.test(l)) ?? "";
   if (/без маркировки/i.test(formatLine)) row["Маркировка"] = "Нет";
@@ -75,22 +86,43 @@ export function parseContractMessage(text: string): ContractRow {
     }
   }
 
-  row["Расчётный счёт"] = digits(valueFor("Расчётный счёт", "р/с"));
-  row["Банк исполнителя"] = valueFor("Название банка", "Банк").replace(/"([^"]*)"/, "«$1»");
+  // адрес может занимать несколько строк: продолжаем, пока не встретится метка или пустая строка
+  const extractAddress = (): string => {
+    const labelPatterns = [/^юридический адрес\s*(?::|-|—)?\s*(.*)$/i, /^адрес\s+(.+)$/i, /^адрес\s*(?::|-|—)\s*(.*)$/i, /^данные исполнителя\s*[-:]?\s*(.*)$/i];
+    let startIdx = -1;
+    let value = "";
+    for (const pattern of labelPatterns) {
+      startIdx = lines.findIndex((l) => pattern.test(l));
+      if (startIdx !== -1) {
+        value = lines[startIdx].match(pattern)?.[1]?.trim() ?? "";
+        break;
+      }
+    }
+    if (startIdx === -1) return "";
+    if (!value) {
+      const next = lines.slice(startIdx + 1).find((l) => l.length > 0) ?? "";
+      value = next;
+      startIdx = lines.indexOf(next, startIdx + 1);
+    }
+    const parts = [value];
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l || KNOWN_LABEL.test(l)) break;
+      parts.push(l);
+    }
+    const joined = parts.join(", ").replace(/,\s*,/g, ",").replace(/,\s*$/, "").trim();
+    return /^(инн|огрнип|тел|e-mail|банк|бик|р\/с|к\/с)/i.test(joined) || /^[\d\s]+$/.test(joined) ? "" : joined;
+  };
+
+  row["Расчётный счёт"] = digits(valueFor("Расчётный счёт", "Расчетный счет", "Номер счета", "Номер счёта", "р/с"));
+  row["Банк исполнителя"] = (valueFor("Название банка") || valueLoose("Банк").value).replace(/"([^"]*)"/, "«$1»");
   row["БИК"] = digits(valueFor("БИК"));
-  row["Корр. счёт"] = digits(valueFor("Корр. счёт", "Корреспондентский счёт", "к/с"));
+  row["Корр. счёт"] = digits(valueFor("Корр. счёт", "Корр. счет", "Корреспондентский счёт", "Корреспондентский счет", "к/с"));
   row["ИНН исполнителя"] = digits(valueFor("ИНН"));
   row["ОГРНИП исполнителя"] = digits(valueFor("ОГРНИП"));
-  const rawAddress = valueFor("Юридический адрес", "Данные исполнителя");
-  row["Адрес исполнителя"] = /^(инн|огрнип|тел|e-mail|банк|бик|р\/с|к\/с)/i.test(rawAddress) || /^[\d\s]+$/.test(rawAddress) ? "" : rawAddress;
+  row["Адрес исполнителя"] = extractAddress();
 
   const project = normalized.match(/Проект\s*[-:]\s*(.+)/i);
-
-  const ordLine = lines.find((l) => /обязанность.*ОРД/i.test(l));
-  if (ordLine) {
-    const ordValue = ordLine.replace(/.*ОРД\s*[-:]?\s*/i, "").trim();
-    row["Кто передаёт данные в ОРД"] = /мы|исполнитель/i.test(ordValue) ? "Исполнитель" : "Заказчик";
-  }
   if (project) row["Проект"] = project[1].trim();
 
   const client = normalized.match(/Данные клиента\s*[-:]\s*(.+)/i);
@@ -103,6 +135,12 @@ export function parseContractMessage(text: string): ContractRow {
       .replace(/Индивидуальный предприниматель/i, "ИП");
   }
 
+  const ordLine = lines.find((l) => /обязанность.*ОРД/i.test(l));
+  if (ordLine) {
+    const ordValue = ordLine.replace(/.*ОРД\s*[-:]?\s*/i, "").trim();
+    row["Кто передаёт данные в ОРД"] = /мы|исполнитель/i.test(ordValue) ? "Исполнитель" : "Заказчик";
+  }
+
   const channelUrlIdx = lines.findIndex((l) => /t\.me\//i.test(l));
   if (channelUrlIdx !== -1) {
     const urlMatch = lines[channelUrlIdx].match(/(https?:\/\/t\.me\/\S+|t\.me\/\S+)/i);
@@ -110,7 +148,7 @@ export function parseContractMessage(text: string): ContractRow {
     const isNameCandidate = (l: string) =>
       l.length > 0
       && !/t\.me\//i.test(l)
-      && !/^(формат|исполнитель|расчётный счёт|название банка|бик|корр|инн|огрнип|окпо|октмо|юридический адрес|оквэд|дата|стоимость|принимаем|проект|данные клиента|публикация)/i.test(l)
+      && !/^(формат|исполнитель|расчётный счёт|расчетный счет|номер сч|название банка|банк|бик|корр|инн|огрнип|окпо|октмо|юридический адрес|адрес|оквэд|дата|стоимость|сумма|принимаем|проект|данные клиента|публикация|ндс|налогообложение|кто принимает|контакты|тел|электронная почта)/i.test(l)
       && !/\s-\s/.test(l);
     const sameLine = lines[channelUrlIdx]
       .replace(/(https?:\/\/t\.me\/\S+|t\.me\/\S+)/i, "")
@@ -129,12 +167,12 @@ export function parseContractMessage(text: string): ContractRow {
   const priceRaw = valueFor("Стоимость услуг", "Сумма");
   if (priceRaw) row["Стоимость"] = parsePrice(priceRaw);
 
-  const labeledEmail = valueFor("e-mail", "email", "Почта");
+  const labeledEmail = valueFor("e-mail", "email", "Почта") || valueLoose("Электронная почта").value;
   if (labeledEmail) row["E-mail исполнителя"] = labeledEmail;
   const emailLine = lines.find((l) => /^[\w.+-]+@[\w-]+\.[\w.]+$/.test(l));
   if (emailLine && !row["E-mail исполнителя"]) row["E-mail исполнителя"] = emailLine;
 
-  const labeledPhone = valueFor("Тел.", "Телефон");
+  const labeledPhone = valueFor("Тел.", "Телефон") || valueLoose("Телефон").value;
   if (labeledPhone) row["Телефон исполнителя"] = labeledPhone;
   const phoneLine = lines.find((l) => /^\+\d[\d\s()-]{9,}$/.test(l));
   if (phoneLine && !row["Телефон исполнителя"]) row["Телефон исполнителя"] = phoneLine;
@@ -147,15 +185,17 @@ export function parseContractMessage(text: string): ContractRow {
   }
 
   const vatPercentMatch = normalized.match(/облагается НДС[,\s]*(?:по ставке\s*)?(\d+)\s*%/i);
+  const ndsValue = valueFor("НДС", "Налогообложение");
   if (vatPercentMatch) {
     row["НДС"] = `Включая НДС ${vatPercentMatch[1]}%`;
-  } else if (/облагается НДС/i.test(normalized)) {
+  } else if (/облагается НДС/i.test(normalized) && !/не облагается/i.test(normalized)) {
     row["НДС"] = "Включая НДС";
-  } else if (/НДС не облагается/i.test(normalized) || row["Тип исполнителя"]) {
+  } else if (/НДС не облагается|без НДС|^нет$/i.test(ndsValue || normalized) || row["Тип исполнителя"]) {
     row["НДС"] = row["Тип исполнителя"] === "Самозанятый"
       ? "НДС не облагается (НПД)"
       : "НДС не облагается (УСН)";
   }
+
   row["Дата договора"] = new Intl.DateTimeFormat("ru-RU", {
     timeZone: "Europe/Moscow",
     day: "2-digit",
