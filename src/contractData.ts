@@ -18,6 +18,14 @@ const monthNames = [
   "июля", "августа", "сентября", "октября", "ноября", "декабря",
 ];
 
+export function formatPhone(raw: string): string {
+  let d = raw.replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("8")) d = "7" + d.slice(1);
+  if (d.length === 10) d = "7" + d;
+  if (d.length !== 11 || !d.startsWith("7")) return raw.trim();
+  return `+7 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
+}
+
 export function parseDate(value: string): Date {
   const match = value.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/);
   if (!match) throw new Error(`Некорректная дата: "${value}" (ожидается ДД.ММ.ГГГГ)`);
@@ -159,7 +167,7 @@ export function templateData(row: ContractRow): Record<string, string> {
     `ИНН: ${row["ИНН исполнителя"] ?? ""}`,
     isIp ? `ОГРНИП: ${row["ОГРНИП исполнителя"] ?? ""}` : "",
     row["E-mail исполнителя"] ? `E-mail: ${row["E-mail исполнителя"]}` : "",
-    row["Телефон исполнителя"] ? `Телефон: ${row["Телефон исполнителя"]}` : "",
+    row["Телефон исполнителя"] ? `Телефон: ${formatPhone(row["Телефон исполнителя"])}` : "",
     row["Расчётный счёт"] ? "Банковские реквизиты:" : "",
     row["Расчётный счёт"] ? `р/с ${row["Расчётный счёт"]}` : "",
     row["Расчётный счёт"] ? `в банке ${row["Банк исполнителя"]}` : "",
@@ -209,7 +217,7 @@ export function templateData(row: ContractRow): Record<string, string> {
     executorEmail: row["E-mail исполнителя"] ?? "",
     executorMessenger: row["Мессенджер исполнителя"] ?? "",
     executorRequisites: requisitesLines.join("\n"),
-    executorPhone: row["Телефон исполнителя"] ?? "",
+    executorPhone: formatPhone(row["Телефон исполнителя"] ?? ""),
     executorRole: isIp ? "Индивидуальный предприниматель" : "Самозанятый",
     executorNameOnly,
   };

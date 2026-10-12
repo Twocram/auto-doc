@@ -113,6 +113,14 @@ function parseDate(value) {
   return new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
 }
 
+function formatPhone(raw) {
+  let d = String(raw).replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("8")) d = "7" + d.slice(1);
+  if (d.length === 10) d = "7" + d;
+  if (d.length !== 11 || !d.startsWith("7")) return String(raw).trim();
+  return "+7 (" + d.slice(1, 4) + ") " + d.slice(4, 7) + "-" + d.slice(7, 9) + "-" + d.slice(9);
+}
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
@@ -188,7 +196,7 @@ function templateData(row) {
     "ИНН: " + row["ИНН исполнителя"],
     isIp ? "ОГРНИП: " + row["ОГРНИП исполнителя"] : "",
     row["E-mail исполнителя"] ? "E-mail: " + row["E-mail исполнителя"] : "",
-    row["Телефон исполнителя"] ? "Телефон: " + row["Телефон исполнителя"] : "",
+    row["Телефон исполнителя"] ? "Телефон: " + formatPhone(row["Телефон исполнителя"]) : "",
     row["Расчётный счёт"] ? "Банковские реквизиты:" : "",
     row["Расчётный счёт"] ? "р/с " + row["Расчётный счёт"] : "",
     row["Расчётный счёт"] ? "в банке " + row["Банк исполнителя"] : "",
@@ -229,7 +237,7 @@ function templateData(row) {
     executorBik: row["БИК"] ?? "",
     executorEmail: row["E-mail исполнителя"] ?? "",
     executorMessenger: row["Мессенджер исполнителя"] ?? "",
-    executorPhone: row["Телефон исполнителя"] ?? "",
+    executorPhone: formatPhone(row["Телефон исполнителя"] ?? ""),
     executorRequisites: requisites,
     executorRole: isIp ? "Индивидуальный предприниматель" : "Самозанятый",
     executorNameOnly: String(row["Исполнитель (полное название)"] ?? "").replace(/^Индивидуальный предприниматель\s+/i, "").replace(/^ИП\s+/i, "").trim(),

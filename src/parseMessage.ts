@@ -140,7 +140,9 @@ export function parseContractMessage(text: string): ContractRow {
   if (phoneLine && !row["Телефон исполнителя"]) row["Телефон исполнителя"] = phoneLine;
 
   if (!row["Адрес исполнителя"]) {
-    const addressLine = lines.find((l) => /^\d{6},\s/.test(l));
+    const addressLine = lines.find((l) =>
+      !/:$/.test(l) && !/банк|инн|огрнип|тел|e-mail/i.test(l)
+      && (/^\d{6},\s/.test(l) || /(^|\s)(ул\.?|улица|пр-т|проспект|пер\.?|переулок|ш\.?|наб\.?)/i.test(l)));
     if (addressLine) row["Адрес исполнителя"] = addressLine;
   }
 
