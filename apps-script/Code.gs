@@ -52,6 +52,7 @@ function generateForActiveRow() {
     }
     body.editAsText().setBackgroundColor(null);
     doc.saveAndClose();
+    deleteComments(copy.getId());
 
     const file = DriveApp.getFileById(copy.getId());
     if (CONFIG.driveFolderId) {
@@ -66,6 +67,17 @@ function generateForActiveRow() {
   } catch (e) {
     setCell(sheet, headers, rowNumber, CONFIG.statusColumn, "Ошибка: " + e.message);
     ui.alert("Ошибка: " + e.message);
+  }
+}
+
+// makeCopy копирует комментарии шаблона — удаляем их через Drive API
+function deleteComments(fileId) {
+  const token = ScriptApp.getOAuthToken();
+  const auth = { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true };
+  const res = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files/" + fileId + "/comments?fields=comments(id)", auth);
+  const comments = JSON.parse(res.getContentText()).comments || [];
+  for (const c of comments) {
+    UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/files/" + fileId + "/comments/" + c.id, { ...auth, method: "delete" });
   }
 }
 
