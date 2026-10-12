@@ -1,5 +1,5 @@
 import { renderDocx } from "./generate";
-import { docxToPdfInDrive } from "./drive";
+import { createDocInDrive } from "./drive";
 import { readRow, writeResult } from "./sheets";
 import { templateData } from "./contractData";
 
@@ -18,7 +18,7 @@ export async function generateForRow(rowNumber: number): Promise<{ url: string }
     }
 
     const fileName = `Договор ${templateData(row).contractNumber}`;
-    const { url } = await docxToPdfInDrive(docx, fileName);
+    const { url } = await createDocInDrive(docx, fileName);
     await writeResult(rowNumber, "Сгенерирован", url);
     return { url };
   } catch (e) {

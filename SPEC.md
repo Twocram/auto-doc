@@ -103,7 +103,7 @@ flowchart LR
 Один язык на бота, работу с Sheets и генерацию PDF:
 - Telegram-бот: grammY (зрелый, webhook + long polling)
 - Google Sheets/Drive: `googleapis`, авторизация через OAuth2 от аккаунта владельца (desktop client + refresh token; приложение в Cloud Console должно быть в статусе «Production», иначе refresh token живёт 7 дней). Все файлы и правки выполняются от имени владельца
-- PDF: шаблоны — оригинальные DOCX (`templates/marked.docx`, `templates/unmarked.docx`), плейсхолдеры `{tag}` вставляются в них скриптом `tools/inject_placeholders.cjs` (node, запуск из корня репо). Подстановка — `docxtemplater` (backend) / `DocumentApp.replaceText` (Apps Script), конвертация в PDF — через Drive (экспорт Google Doc). НДС-формулировка подставляется целиком плейсхолдером `{vatClause}` (УСН / НПД+чек / НДС %). Жёлтая подсветка из шаблонов снимается при генерации
+- Выходной документ: **Google Doc** (docx-шаблон → загрузка на Drive с конвертацией в Google Doc → доступ «по ссылке — просмотр» → ссылка в таблицу/чат). PDF не генерируется; при необходимости пользователь скачивает его из Google Doc сам. Подстановка — `docxtemplater` (backend) / `DocumentApp.replaceText` (Apps Script). НДС-формулировка подставляется целиком плейсхолдером `{vatClause}` (УСН / НПД+чек / НДС %). Жёлтая подсветка из шаблонов снимается при генерации
 
 Go рассматривался как альтернатива (связка с Telegram, микросервисы), но отклонён: экосистема генерации/заполнения PDF в Go слабая (платный UniDoc либо ручная раскладка в gofpdf), а конкурентность и микросервисы на этом объёме не нужны — один сервис, один процесс.
 

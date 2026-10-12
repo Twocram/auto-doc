@@ -53,16 +53,17 @@ function generateForActiveRow() {
     body.editAsText().setBackgroundColor(null);
     doc.saveAndClose();
 
-    const folder = CONFIG.driveFolderId
-      ? DriveApp.getFolderById(CONFIG.driveFolderId)
-      : DriveApp.getFileById(templateId).getParents().next();
-    const pdf = folder.createFile(copy.getAs("application/pdf")).setName("Договор " + data.contractNumber + ".pdf");
-    pdf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    DriveApp.getFileById(copy.getId()).setTrashed(true);
+    const file = DriveApp.getFileById(copy.getId());
+    if (CONFIG.driveFolderId) {
+      DriveApp.getFolderById(CONFIG.driveFolderId).addFile(file);
+      DriveApp.getRootFolder().removeFile(file);
+    }
+    file.setName("Договор " + data.contractNumber);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
     setCell(sheet, headers, rowNumber, CONFIG.statusColumn, "Сгенерирован");
-    setCell(sheet, headers, rowNumber, CONFIG.urlColumn, pdf.getUrl());
-    ui.alert("Готово: " + pdf.getUrl());
+    setCell(sheet, headers, rowNumber, CONFIG.urlColumn, file.getUrl());
+    ui.alert("Готово: " + file.getUrl());
   } catch (e) {
     setCell(sheet, headers, rowNumber, CONFIG.statusColumn, "Ошибка: " + e.message);
     ui.alert("Ошибка: " + e.message);
