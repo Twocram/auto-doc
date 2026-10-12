@@ -29,7 +29,7 @@ export async function createDocInDrive(docx: Buffer, fileName: string): Promise<
 
   await drive.permissions.create({
     fileId,
-    requestBody: { type: "anyone", role: "reader" },
+    requestBody: { type: "anyone", role: "writer" },
   });
 
   return {

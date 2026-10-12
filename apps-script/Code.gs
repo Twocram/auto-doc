@@ -58,8 +58,7 @@ function generateForActiveRow() {
       DriveApp.getFolderById(CONFIG.driveFolderId).addFile(file);
       DriveApp.getRootFolder().removeFile(file);
     }
-    file.setName("Договор " + data.contractNumber);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
 
     setCell(sheet, headers, rowNumber, CONFIG.statusColumn, "Сгенерирован");
     setCell(sheet, headers, rowNumber, CONFIG.urlColumn, file.getUrl());
