@@ -60,9 +60,15 @@ export function parseContractMessage(text: string): ContractRow {
     else if (/(?:^|\s)ИП(?:\s|$)/i.test(typeSource)) row["Тип исполнителя"] = "ИП";
     const hasTypeInline = /(?:^|\s)(ИП|СЗ|Самозанят\w*)(?:\s|$)/i.test(lines[executorIdx]);
     const inlineName = hasTypeInline
-      ? lines[executorIdx].replace(/.*(?:^|\s)(ИП|СЗ|Самозанят\w*)\s+/i, "").trim()
+      ? lines[executorIdx].replace(/.*(?:^|\s)(ИП|СЗ|Самозанят\w*)(?:\s+|$)/i, "").trim()
       : "";
-    const nameLine = inlineName || afterExecutor;
+    let nameLine = inlineName || afterExecutor;
+    if (nameLine && row["Тип исполнителя"] === "ИП" && !/^(ИП|Индивидуальный предприниматель)\s/i.test(nameLine)) {
+      nameLine = `ИП ${nameLine}`;
+    }
+    if (nameLine && row["Тип исполнителя"] === "Самозанятый") {
+      nameLine = nameLine.replace(/^(СЗ|Самозанят\w*)\s+/i, "");
+    }
     if (nameLine) {
       row["Исполнитель (полное название)"] = nameLine;
       row["Исполнитель (кратко)"] = shortName(nameLine);
@@ -75,7 +81,8 @@ export function parseContractMessage(text: string): ContractRow {
   row["Корр. счёт"] = digits(valueFor("Корр. счёт", "Корреспондентский счёт", "к/с"));
   row["ИНН исполнителя"] = digits(valueFor("ИНН"));
   row["ОГРНИП исполнителя"] = digits(valueFor("ОГРНИП"));
-  row["Адрес исполнителя"] = valueFor("Юридический адрес", "Данные исполнителя");
+  const rawAddress = valueFor("Юридический адрес", "Данные исполнителя");
+  row["Адрес исполнителя"] = /^(инн|огрнип|тел|e-mail|банк|бик|р\/с|к\/с)/i.test(rawAddress) || /^[\d\s]+$/.test(rawAddress) ? "" : rawAddress;
 
   const project = normalized.match(/Проект\s*[-:]\s*(.+)/i);
 
